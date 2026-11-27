@@ -37,7 +37,10 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = [ toolchain ];
+          nativeBuildInputs = with pkgs; [
+            toolchain
+            wasm-pack
+          ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (
             with pkgs;
