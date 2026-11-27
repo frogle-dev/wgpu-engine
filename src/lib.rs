@@ -103,4 +103,62 @@ impl ApplicationHandler<State> for App {
 
         self.state = Some(event);
     }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        let state = match &mut self.state {
+            Some(canvas) => canvas,
+            None => return,
+        };
+
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::RedrawRequested => state.render(),
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
+                ..
+            } => match (code, key_state.is_pressed()) {
+                (KeyCode::Escape, true) => event_loop.exit(),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+pub fn run() -> anyhow::Result<()> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::init();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_log::init_with_level(log::Level::Info).unwrap_throw();
+    }
+
+    let event_loop = EventLoop::with_user_event().build()?;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut app = App::new();
+        event_loop.run_app(&mut app)?;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let app = App::new(&event_loop);
+        event_loop.spawn_app(app);
+    }
+
+    Ok(())
 }
