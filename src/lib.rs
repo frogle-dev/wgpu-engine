@@ -63,6 +63,44 @@ impl ApplicationHandler<State> for App {
             const CANVAS_ID: &str = "canvas";
 
             let window = wgpu::web_sys::window().unwrap_throw();
+            let document = window.document().unwrap_throw();
+            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
+            let html_canvas_element = canvas.unchecked_into();
+            window_attributes = window_attributes.with_canvas(Some(html_canvas_element));
         }
+
+        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.state = Some(pollster::block_on(State::new(window)).unwrap());
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(proxy) = self.proxy.take() {
+                wasm_bindgen_futures::spawn_local(async move {
+                    assert!(
+                        proxy
+                            .send_event(State::new(window).await.expect("Unable to create canvas!"))
+                            .is_ok()
+                    )
+                });
+            }
+        }
+    }
+
+    #[allow(unused_mut)]
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, mut event: State) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            event.window.request_redraw();
+            event.resize(
+                event.window.inner_size().width,
+                event.window.inner_size().height,
+            );
+        }
+
+        self.state = Some(event);
     }
 }
