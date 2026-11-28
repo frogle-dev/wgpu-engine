@@ -30,6 +30,9 @@ pub enum RendererError {
 
     #[error("failed starting winit event loop")]
     EventLoop(#[from] winit::error::EventLoopError),
+
+    #[error("wgpu current surface texture lost")]
+    LostDevice,
 }
 
 pub struct State {
@@ -40,6 +43,8 @@ pub struct State {
     is_surface_configured: bool,
 
     window: Arc<Window>,
+
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -70,7 +75,7 @@ impl State {
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: None,
+                label: Some("Main device"),
                 required_features: wgpu::Features::empty(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 required_limits: wgpu::Limits::default(),
@@ -99,6 +104,37 @@ impl State {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Hardcoded red triangle shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/vert.wgsl").into()),
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Hardcoded red triangle render pipeline"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: None, // None: must be one vertex entry point
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: None, // same here
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: None,
+                    write_mask: Default::default(),
+                })],
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         Ok(Self {
             surface,
             device,
@@ -106,6 +142,7 @@ impl State {
             config,
             is_surface_configured: false,
             window,
+            render_pipeline,
         })
     }
 
@@ -134,7 +171,68 @@ impl State {
             return Ok(());
         }
 
-        // let output = self.surface.get_current_texture(
+        let output = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(surface_tex)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(surface_tex) => surface_tex,
+
+            wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => {
+                // skip frame
+                return Ok(());
+            }
+
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.surface.configure(&self.device, &self.config);
+                return Ok(());
+            }
+
+            wgpu::CurrentSurfaceTexture::Lost => {
+                return Err(RendererError::LostDevice);
+            }
+        };
+
+        let clear_color = wgpu::Color {
+            r: 0.5,
+            g: 0.4,
+            b: 0.7,
+            a: 1.0,
+        };
+
+        let render_pass_desc = wgpu::RenderPassDescriptor {
+            label: Some("Basic render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &output
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(clear_color),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        };
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3, 0..1);
+            // render pass is ended when its dropped
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.present(output);
 
         Ok(())
     }

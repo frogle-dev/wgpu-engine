@@ -40,6 +40,7 @@
           nativeBuildInputs = with pkgs; [
             toolchain
             wasm-pack
+            wgsl-analyzer
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (
