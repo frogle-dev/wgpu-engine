@@ -1,3 +1,5 @@
+// RUST_LOG=wgpu_hal=debug cargo run
+
 use std::sync::Arc;
 
 use winit::{
@@ -81,8 +83,6 @@ impl State {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
-        // dbg!(surface.get_capabilities(&adapter));
-
         Ok(Self {
             surface,
             device,
@@ -93,10 +93,32 @@ impl State {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {}
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            self.config.width = width;
+            self.config.height = height;
+            self.surface.configure(&self.device, &self.config);
+            self.is_surface_configured = true;
+        }
+    }
 
-    pub fn render(&mut self) {
+    fn handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+        match (code, is_pressed) {
+            (KeyCode::Escape, true) => event_loop.exit(),
+            _ => {}
+        }
+    }
+
+    fn update(&mut self) {}
+
+    pub fn render(&mut self) -> anyhow::Result<()> {
         self.window.request_redraw();
+
+        if !self.is_surface_configured {
+            return Ok(());
+        }
+
+        // let output = self.surface.get_current_texture(
     }
 }
 
@@ -198,10 +220,7 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => match (code, key_state.is_pressed()) {
-                (KeyCode::Escape, true) => event_loop.exit(),
-                _ => {}
-            },
+            } => state.handle_key(event_loop, code, key_state.is_pressed()),
             _ => {}
         }
     }
