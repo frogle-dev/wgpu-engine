@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use thiserror::Error;
+
 use winit::{
     application::ApplicationHandler,
     event::*,
@@ -15,6 +17,21 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::EventLoopExtWebSys;
 
+#[derive(Error, Debug)]
+pub enum RendererError {
+    #[error("failed creating wgpu surface")]
+    CreateSurface(#[from] wgpu::CreateSurfaceError),
+
+    #[error("failed requesting wgpu adapter")]
+    RequestAdapter(#[from] wgpu::RequestAdapterError),
+
+    #[error("failed requesting wgpu device")]
+    RequestDevice(#[from] wgpu::RequestDeviceError),
+
+    #[error("failed starting winit event loop")]
+    EventLoop(#[from] winit::error::EventLoopError),
+}
+
 pub struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -26,7 +43,7 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    pub async fn new(window: Arc<Window>) -> Result<Self, RendererError> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -45,8 +62,7 @@ impl State {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
-                // compatible_surface: Some(&surface), FOR WEBGL
-                compatible_surface: None,
+                compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
                 apply_limit_buckets: true,
             })
@@ -76,7 +92,7 @@ impl State {
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
+            present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -111,7 +127,7 @@ impl State {
 
     fn update(&mut self) {}
 
-    pub fn render(&mut self) -> anyhow::Result<()> {
+    pub fn render(&mut self) -> Result<(), RendererError> {
         self.window.request_redraw();
 
         if !self.is_surface_configured {
@@ -119,6 +135,8 @@ impl State {
         }
 
         // let output = self.surface.get_current_texture(
+
+        Ok(())
     }
 }
 
@@ -211,7 +229,7 @@ impl ApplicationHandler<State> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => state.render(),
+            WindowEvent::RedrawRequested => state.render().unwrap(),
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -226,7 +244,7 @@ impl ApplicationHandler<State> for App {
     }
 }
 
-pub fn run() -> anyhow::Result<()> {
+pub fn run() -> Result<(), RendererError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
