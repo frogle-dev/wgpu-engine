@@ -31,7 +31,7 @@ impl State {
             // #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             // #[cfg(target_arch = "wasm32")]
-            // backends: wgpu::Backends::GL, FOR WEBGL
+            // backends: wgpu::Backends::BROWSER_WEBGPU,
             flags: Default::default(),
             memory_budget_thresholds: Default::default(),
             backend_options: Default::default(),
@@ -81,7 +81,7 @@ impl State {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
-        dbg!(surface.get_capabilities(&adapter));
+        // dbg!(surface.get_capabilities(&adapter));
 
         Ok(Self {
             surface,

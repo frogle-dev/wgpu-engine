@@ -47,6 +47,7 @@
             [
               wayland
               libxkbcommon
+              vulkan-loader
               # libX11
             ]
           );
